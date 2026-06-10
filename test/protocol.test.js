@@ -42,3 +42,23 @@ test('rejects connect with empty password', () => {
   const r = parseClientMessage(JSON.stringify({ type: 'connect', level: 1, password: '' }));
   assert.strictEqual(r.ok, false);
 });
+
+test('rejects object password', () => {
+  const r = parseClientMessage(JSON.stringify({ type: 'connect', level: 1, password: { x: 1 } }));
+  assert.strictEqual(r.ok, false);
+});
+
+test('rejects empty-string level', () => {
+  const r = parseClientMessage(JSON.stringify({ type: 'connect', level: '', password: 'pw' }));
+  assert.strictEqual(r.ok, false);
+});
+
+test('rejects non-scalar name in init', () => {
+  const r = parseClientMessage(JSON.stringify({ type: 'init', name: { a: 1 }, email: 'a@x.edu' }));
+  assert.strictEqual(r.ok, false);
+});
+
+test('rejects non-positive resize', () => {
+  const r = parseClientMessage(JSON.stringify({ type: 'resize', cols: -1, rows: 24 }));
+  assert.strictEqual(r.ok, false);
+});
