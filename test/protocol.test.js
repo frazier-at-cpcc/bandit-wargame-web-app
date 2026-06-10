@@ -62,3 +62,14 @@ test('rejects non-positive resize', () => {
   const r = parseClientMessage(JSON.stringify({ type: 'resize', cols: -1, rows: 24 }));
   assert.strictEqual(r.ok, false);
 });
+
+test('accepts connect to final level 25', () => {
+  const r = parseClientMessage(JSON.stringify({ type: 'connect', level: 25, password: 'pw' }));
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.msg.level, 25);
+});
+
+test('rejects connect to level 26', () => {
+  const r = parseClientMessage(JSON.stringify({ type: 'connect', level: 26, password: 'pw' }));
+  assert.strictEqual(r.ok, false);
+});

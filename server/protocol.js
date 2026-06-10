@@ -1,5 +1,5 @@
 'use strict';
-const { MIN_LEVEL, MAX_LEVEL } = require('./config');
+const { MIN_LEVEL, MAX_CONNECT_LEVEL } = require('./config');
 
 function fail(reason) { return { ok: false, reason }; }
 function ok(msg) { return { ok: true, msg }; }
@@ -29,7 +29,7 @@ function parseClientMessage(raw) {
     case 'connect': {
       if (obj.level == null || obj.level === '') return fail('level required');
       const level = Number(obj.level);
-      if (!Number.isInteger(level) || level < MIN_LEVEL || level > MAX_LEVEL) {
+      if (!Number.isInteger(level) || level < MIN_LEVEL || level > MAX_CONNECT_LEVEL) {
         return fail('level out of range');
       }
       if (!isScalar(obj.password)) return fail('password must be text');

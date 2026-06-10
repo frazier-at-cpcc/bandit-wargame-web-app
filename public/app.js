@@ -2,7 +2,10 @@
 
 let ws, bridge, sessionId = null;
 let currentLevel = 0;
+let hasConnected = false;
 let identity = { name: '', email: '' };
+
+const FINAL_LEVEL = 25; // connecting here finalizes the level-24 PDF (course complete)
 
 const $ = (id) => document.getElementById(id);
 
@@ -15,6 +18,12 @@ function setStatus(text, kind) {
   const s = $('status'); s.textContent = text; s.className = 'status' + (kind ? ' ' + kind : '');
 }
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
 // Client-side copy of level task/hints for the panel, fetched from levels.json
 // (generated from server/levels.js — the single source of truth).
 const LEVELS = {};
@@ -24,21 +33,36 @@ async function loadLevels() {
   Object.assign(LEVELS, await res.json());
 }
 
+function updateNextBtn() {
+  // Show "Next level" only after the student has connected at least once and
+  // there is a further level to advance to (cap at the final connect level).
+  $('nextLevelBtn').hidden = !(hasConnected && currentLevel < FINAL_LEVEL);
+}
+
 function renderLevelPanel(level) {
-  const meta = LEVELS[level] || { title: '', task: '', hints: [] };
-  $('levelTitle').textContent = `Level ${level} → ${level + 1}: ${meta.title}`;
-  $('levelTask').textContent = meta.task;
-  $('levelHints').innerHTML = meta.hints.map((h) => `<li>${h}</li>`).join('');
-  $('pwLabel').firstChild.textContent = `bandit${level} password `;
+  if (level >= FINAL_LEVEL) {
+    $('levelTitle').textContent = 'Final step — finish the course';
+    $('levelTask').textContent =
+      'Enter the bandit25 password you discovered in Level 24 and connect to finalize your Level 24 PDF.';
+    $('levelHints').innerHTML = '';
+    $('pwLabel').firstChild.textContent = 'bandit25 password ';
+  } else {
+    const meta = LEVELS[level] || { title: '', task: '', hints: [] };
+    $('levelTitle').textContent = `Level ${level} → ${level + 1}: ${meta.title}`;
+    $('levelTask').textContent = meta.task;
+    $('levelHints').innerHTML = meta.hints.map((h) => `<li>${escapeHtml(h)}</li>`).join('');
+    $('pwLabel').firstChild.textContent = `bandit${level} password `;
+  }
   $('password').value = '';
   $('pdfArea').hidden = true;
+  updateNextBtn();
 }
 
 function connectWs() {
   ws = new WebSocket(wsUrl());
   ws.onopen = () => { bridge = window.createTerminalBridge('terminal', ws); };
   ws.onmessage = (ev) => handleServer(JSON.parse(ev.data));
-  ws.onclose = () => setStatus('Disconnected. Refresh to reconnect.', 'err');
+  ws.onclose = () => setStatus('Disconnected. Refresh the page to reconnect.', 'err');
 }
 
 function handleServer(msg) {
@@ -55,9 +79,14 @@ function handleServer(msg) {
       break;
     case 'connected':
       currentLevel = msg.level;
+      hasConnected = true;
       localStorage.setItem('bandit.level', String(currentLevel));
       renderLevelPanel(currentLevel);
-      setStatus(`Connected as bandit${currentLevel}.`, 'ok');
+      if (currentLevel >= FINAL_LEVEL) {
+        setStatus('🎉 Course complete! Download your final Level 24 PDF below.', 'ok');
+      } else {
+        setStatus(`Connected as bandit${currentLevel}.`, 'ok');
+      }
       break;
     case 'levelComplete': {
       const link = $('pdfLink');
@@ -95,6 +124,10 @@ function start() {
 
 function onConnectSubmit(e) {
   e.preventDefault();
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    setStatus('Not connected. Refresh the page to reconnect.', 'err');
+    return;
+  }
   const password = $('password').value;
   if (!password) { setStatus('Enter the password you found.', 'err'); return; }
   setStatus('Connecting…');
@@ -108,8 +141,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('startBtn').addEventListener('click', start);
   $('connectForm').addEventListener('submit', onConnectSubmit);
   $('nextLevelBtn').addEventListener('click', () => {
-    currentLevel = currentLevel + 1;
-    renderLevelPanel(currentLevel);
-    setStatus(`Enter the bandit${currentLevel} password you discovered.`);
+    if (currentLevel < FINAL_LEVEL) {
+      currentLevel = currentLevel + 1;
+      renderLevelPanel(currentLevel);
+      setStatus(`Enter the bandit${currentLevel} password you discovered.`);
+    }
   });
 });
