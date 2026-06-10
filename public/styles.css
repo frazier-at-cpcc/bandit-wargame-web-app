@@ -1,0 +1,21 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #0f1117; color: #e6e6e6; }
+header { padding: 12px 20px; background: #161a23; border-bottom: 1px solid #2a2f3a; }
+header h1 { margin: 0; font-size: 18px; }
+.card { background: #161a23; border: 1px solid #2a2f3a; border-radius: 8px; padding: 16px; }
+#start { max-width: 420px; margin: 40px auto; }
+#start label, #connectForm label { display: block; margin: 10px 0; font-size: 14px; }
+#start input, #connectForm input { width: 100%; padding: 8px; margin-top: 4px;
+  background: #0f1117; border: 1px solid #2a2f3a; color: #e6e6e6; border-radius: 6px; }
+button { padding: 8px 14px; background: #2d6cdf; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+button:hover { background: #3a7af0; }
+.hint { color: #8b93a3; font-size: 12px; }
+.status { font-size: 13px; min-height: 18px; }
+.status.err { color: #ff6b6b; }
+.status.ok { color: #4ec77f; }
+main#workspace { display: grid; grid-template-columns: 340px 1fr; gap: 14px; padding: 14px; height: calc(100vh - 55px); }
+#panel { overflow-y: auto; }
+#panel h2 { margin-top: 0; font-size: 16px; }
+#levelHints { padding-left: 18px; color: #b9c0cc; font-size: 13px; }
+#terminal { background: #000; border-radius: 8px; padding: 6px; overflow: hidden; }
+#pdfArea a { color: #4ec77f; display: inline-block; margin-right: 12px; }
