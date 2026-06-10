@@ -17,3 +17,8 @@ test('renderPdfBuffer returns a PDF buffer', async () => {
   assert.ok(buf.length > 500);
   assert.strictEqual(buf.slice(0, 5).toString('latin1'), '%PDF-');
 });
+
+test('renderPdfBuffer rejects an invalid model', async () => {
+  await assert.rejects(() => renderPdfBuffer(null), /invalid model/);
+  await assert.rejects(() => renderPdfBuffer({}), /invalid model/);
+});

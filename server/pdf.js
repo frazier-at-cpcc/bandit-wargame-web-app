@@ -3,6 +3,9 @@ const PDFDocument = require('pdfkit');
 
 // Draws the model into a PDF and resolves with the full Buffer.
 function renderPdfBuffer(model) {
+  if (!model || !Array.isArray(model.commands)) {
+    return Promise.reject(new TypeError('renderPdfBuffer: invalid model (commands array required)'));
+  }
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'LETTER', margin: 54 });
     const chunks = [];

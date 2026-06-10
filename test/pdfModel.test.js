@@ -26,3 +26,14 @@ test('uses HEADER_TEXT default and level title lookup', () => {
   assert.strictEqual(m.title, 'Find a word in a big file');
   assert.strictEqual(m.nextUser, 'bandit8');
 });
+
+test('buildPdfModel tolerates missing commands array', () => {
+  const m = buildPdfModel({
+    session: { name: 'A', email: 'a@x.edu' },
+    level: 0,
+    finalized: { discoveredPassword: 'PW' }, // no commands key
+    dateIso: '2026-06-10T00:00:00Z',
+  });
+  assert.deepStrictEqual(m.commands, []);
+  assert.strictEqual(m.commandCount, 0);
+});
