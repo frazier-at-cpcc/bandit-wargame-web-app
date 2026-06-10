@@ -9,6 +9,14 @@ const {
 
 const DENY_RE = /permission denied|authentication failed/i;
 
+// Kill a PTY and stop forwarding its output (so a dying proc can't leak bytes
+// to the client after it has been superseded).
+function killProc(proc) {
+  if (!proc) return;
+  try { if (proc._dataSub && proc._dataSub.dispose) proc._dataSub.dispose(); } catch (_) {}
+  try { proc.kill(); } catch (_) {}
+}
+
 // One Session per connected browser. Holds identity, the live PTY, the current
 // level's command log, and finalized per-level logs (with discovered passwords).
 class Session {
@@ -23,6 +31,7 @@ class Session {
     this.finalized = new Map();   // level -> { commands, discoveredPassword }
     this._lastConnectAt = 0;
     this._cooldownUntil = 0;
+    this._connecting = false;     // a connect attempt is in flight
     this.onData = () => {};        // set by caller: PTY output -> client
   }
 
@@ -31,11 +40,13 @@ class Session {
   // Returns { started: true, result: Promise } or { started: false, reason }.
   connect(level, password) {
     const now = Date.now();
+    if (this._connecting) return { started: false, reason: 'busy' };
     if (now < this._cooldownUntil) return { started: false, reason: 'cooldown' };
     if (now - this._lastConnectAt < CONNECT_MIN_INTERVAL_MS) {
       return { started: false, reason: 'too-fast' };
     }
     this._lastConnectAt = now;
+    this._connecting = true;
 
     const targetUser = `bandit${level}`;
     const args = [
@@ -54,36 +65,44 @@ class Session {
 
     let settled = false;
     let sawOutput = false;
+    let timer = null;
 
     const promise = new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        if (!settled) { settled = true; resolve({ ok: false, reason: 'timeout' }); proc.kill(); }
+      const settle = (val) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        this._connecting = false;
+        resolve(val);
+      };
+
+      timer = setTimeout(() => {
+        this._cooldownUntil = Date.now() + FAILED_LOGIN_COOLDOWN_MS;
+        killProc(proc);
+        settle({ ok: false, reason: 'timeout' });
       }, CONNECT_TIMEOUT_MS);
 
-      proc.onData((data) => {
-        this.onData(data); // stream to client regardless
+      proc._dataSub = proc.onData((data) => {
+        this.onData(data); // stream to client while this proc is alive
         if (settled) return;
         if (DENY_RE.test(data)) {
-          settled = true; clearTimeout(timer);
           this._cooldownUntil = Date.now() + FAILED_LOGIN_COOLDOWN_MS;
-          resolve({ ok: false, reason: 'denied' });
-          proc.kill();
+          killProc(proc);
+          settle({ ok: false, reason: 'denied' });
           return;
         }
         // First substantive output without a deny => treat as connected.
         if (!sawOutput && data.trim().length > 0) {
           sawOutput = true;
-          settled = true; clearTimeout(timer);
           this._promote(proc, level, password);
-          resolve({ ok: true });
+          settle({ ok: true });
         }
       });
 
       proc.onExit(({ exitCode }) => {
         if (settled) return;
-        settled = true; clearTimeout(timer);
         this._cooldownUntil = Date.now() + FAILED_LOGIN_COOLDOWN_MS;
-        resolve({ ok: false, reason: exitCode === 0 ? 'closed' : 'auth' });
+        settle({ ok: false, reason: exitCode === 0 ? 'closed' : 'auth' });
       });
     });
 
@@ -99,9 +118,9 @@ class Session {
         discoveredPassword: password, // the password used to reach `level` (= bandit<level>'s pw)
       });
     }
-    // Tear down any previous live PTY.
+    // Tear down any previous live PTY (and stop forwarding its output).
     if (this.proc && this.proc !== proc) {
-      try { this.proc.kill(); } catch (_) {}
+      killProc(this.proc);
     }
 
     // Reconnect to the SAME level (e.g., after a drop) keeps its open log.
@@ -115,7 +134,7 @@ class Session {
 
   // Forward a keystroke to the live PTY AND to the capture buffer.
   input(data) {
-    if (!this.proc) return;
+    if (!this.proc || !this.capture) return;
     this.capture.feed(data);
     this.proc.write(data);
   }
@@ -129,7 +148,7 @@ class Session {
   }
 
   destroy() {
-    if (this.proc) { try { this.proc.kill(); } catch (_) {} this.proc = null; }
+    if (this.proc) { killProc(this.proc); this.proc = null; }
   }
 }
 
