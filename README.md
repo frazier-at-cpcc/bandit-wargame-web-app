@@ -19,8 +19,7 @@ resume token).
 
 ## Status
 
-Design complete. See [`docs/superpowers/specs/`](docs/superpowers/specs/) for the full design
-spec. Implementation in progress.
+Implemented — backend and frontend complete, 35 tests passing. Deploy via the Render blueprint (`render.yaml`). See [`docs/superpowers/specs/`](docs/superpowers/specs/) for the full design spec.
 
 ## Tech
 

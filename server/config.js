@@ -12,4 +12,7 @@ module.exports = {
   FAILED_LOGIN_COOLDOWN_MS: 4000,
   // How long to wait for a connect to prove success/failure before giving up.
   CONNECT_TIMEOUT_MS: 12000,
+  // Grace window: if a connect produced output but neither a deny nor the shell
+  // prompt was recognized, accept it as connected after this delay.
+  CONNECT_GRACE_MS: 2000,
 };

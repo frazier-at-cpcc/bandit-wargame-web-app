@@ -6,7 +6,8 @@
   "main": "server/app.js",
   "scripts": {
     "start": "node server/app.js",
-    "test": "node --test"
+    "test": "node --test",
+    "gen:levels": "node scripts/gen-levels-json.js"
   },
   "dependencies": {
     "express": "^4.19.2",

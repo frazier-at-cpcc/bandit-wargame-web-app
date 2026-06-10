@@ -3,11 +3,13 @@ const crypto = require('crypto');
 const pty = require('node-pty');
 const { CommandCapture } = require('./capture');
 const {
-  BANDIT_HOST, BANDIT_PORT, CONNECT_TIMEOUT_MS,
+  BANDIT_HOST, BANDIT_PORT, CONNECT_TIMEOUT_MS, CONNECT_GRACE_MS,
   CONNECT_MIN_INTERVAL_MS, FAILED_LOGIN_COOLDOWN_MS,
 } = require('./config');
 
 const DENY_RE = /permission denied|authentication failed/i;
+const PROMPT_RE = /bandit\d+@bandit:[^\n]*\$/; // the bandit shell prompt
+const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]/g;     // strip color codes before matching
 
 // Kill a PTY and stop forwarding its output (so a dying proc can't leak bytes
 // to the client after it has been superseded).
@@ -64,14 +66,16 @@ class Session {
     });
 
     let settled = false;
-    let sawOutput = false;
+    let banner = '';
     let timer = null;
+    let graceTimer = null;
 
     const promise = new Promise((resolve) => {
       const settle = (val) => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
+        if (graceTimer) clearTimeout(graceTimer);
         this._connecting = false;
         resolve(val);
       };
@@ -82,21 +86,37 @@ class Session {
         settle({ ok: false, reason: 'timeout' });
       }, CONNECT_TIMEOUT_MS);
 
+      // Fallback: if output arrived but matched neither a deny nor the shell
+      // prompt within a short grace window (prompt-format drift), and the proc
+      // is still alive, treat it as connected. Denials arrive fast, so DENY_RE
+      // and onExit still win first.
+      const armGrace = () => {
+        if (graceTimer) return;
+        graceTimer = setTimeout(() => {
+          this._promote(proc, level, password);
+          settle({ ok: true });
+        }, CONNECT_GRACE_MS);
+      };
+
       proc._dataSub = proc.onData((data) => {
         this.onData(data); // stream to client while this proc is alive
         if (settled) return;
-        if (DENY_RE.test(data)) {
+        banner = (banner + data).slice(-8192);
+        const clean = banner.replace(ANSI_RE, '');
+        if (DENY_RE.test(clean)) {
           this._cooldownUntil = Date.now() + FAILED_LOGIN_COOLDOWN_MS;
           killProc(proc);
           settle({ ok: false, reason: 'denied' });
           return;
         }
-        // First substantive output without a deny => treat as connected.
-        if (!sawOutput && data.trim().length > 0) {
-          sawOutput = true;
+        // Success is anchored to the bandit shell prompt, not merely the first
+        // output, so a late "Permission denied" cannot be read as success.
+        if (PROMPT_RE.test(clean)) {
           this._promote(proc, level, password);
           settle({ ok: true });
+          return;
         }
+        if (clean.trim().length > 0) armGrace();
       });
 
       proc.onExit(({ exitCode }) => {
