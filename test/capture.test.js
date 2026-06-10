@@ -63,3 +63,28 @@ test('feed can be split across chunks', () => {
   c.feed('me\r');
   assert.deepStrictEqual(out, ['cat readme']);
 });
+
+test('ESC at end of chunk does not drop the following CR', () => {
+  const c = new CommandCapture();
+  const out = [];
+  c.on((line) => out.push(line));
+  c.feed('ls\x1b');
+  c.feed('\r');
+  assert.deepStrictEqual(out, ['ls']);
+});
+
+test('OSC string sequence (ESC ] ... BEL) does not corrupt the buffer', () => {
+  const c = new CommandCapture();
+  const out = [];
+  c.on((line) => out.push(line));
+  c.feed('ls\x1b]0;user@host\x07\r');
+  assert.deepStrictEqual(out, ['ls']);
+});
+
+test('double-ESC before a CSI sequence leaves no literal bytes in the buffer', () => {
+  const c = new CommandCapture();
+  const out = [];
+  c.on((line) => out.push(line));
+  c.feed('ls\x1b\x1b[A\r');
+  assert.deepStrictEqual(out, ['ls']);
+});
