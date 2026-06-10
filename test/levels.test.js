@@ -32,3 +32,16 @@ test('getLevel returns null for out-of-range', () => {
 test('count reflects 0..24 inclusive', () => {
   assert.strictEqual(levels.count(), 25);
 });
+
+test('getLevel coerces string input', () => {
+  const lvl = levels.getLevel('3');
+  assert.ok(lvl);
+  assert.strictEqual(lvl.level, 3);
+});
+
+test('all() returns a defensive copy of 25 entries', () => {
+  const a = levels.all();
+  assert.strictEqual(a.length, 25);
+  a.push({ level: 999 });
+  assert.strictEqual(levels.all().length, 25);
+});

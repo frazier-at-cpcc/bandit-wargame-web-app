@@ -81,8 +81,13 @@ const LEVELS = [
 
 const BY_LEVEL = new Map(LEVELS.map((l) => [l.level, l]));
 
+if (BY_LEVEL.size !== LEVELS.length) {
+  throw new Error('levels.js: duplicate level numbers detected');
+}
+
 function getLevel(n) {
-  return BY_LEVEL.has(n) ? BY_LEVEL.get(n) : null;
+  const key = Number(n);
+  return BY_LEVEL.has(key) ? BY_LEVEL.get(key) : null;
 }
 
 function count() {
