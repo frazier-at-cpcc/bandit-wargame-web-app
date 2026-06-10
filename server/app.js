@@ -20,14 +20,18 @@ app.get('/pdf/:sessionId/:level', async (req, res) => {
   if (!session) return res.status(404).send('session not found');
   const finalized = session.getFinalized(level);
   if (!finalized) return res.status(404).send('level not completed');
-  const model = buildPdfModel({
-    session, level, finalized, dateIso: new Date().toISOString(),
-  });
-  const buf = await renderPdfBuffer(model);
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition',
-    `attachment; filename="bandit-level-${level}-${level + 1}.pdf"`);
-  res.send(buf);
+  try {
+    const model = buildPdfModel({
+      session, level, finalized, dateIso: new Date().toISOString(),
+    });
+    const buf = await renderPdfBuffer(model);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition',
+      `attachment; filename="bandit-level-${level}-${level + 1}.pdf"`);
+    res.send(buf);
+  } catch (err) {
+    res.status(500).send('PDF generation failed');
+  }
 });
 
 const server = http.createServer(app);
@@ -41,30 +45,33 @@ wss.on('connection', (ws) => {
   safeSend(ws, { type: 'ready', sessionId: session.id });
 
   ws.on('message', async (raw) => {
-    const parsed = parseClientMessage(raw.toString());
-    if (!parsed.ok) { safeSend(ws, { type: 'error', message: parsed.reason }); return; }
-    const msg = parsed.msg;
+    try {
+      const parsed = parseClientMessage(raw.toString());
+      if (!parsed.ok) { safeSend(ws, { type: 'error', message: parsed.reason }); return; }
+      const msg = parsed.msg;
 
-    if (msg.type === 'init') {
-      session.setIdentity(msg.name, msg.email);
-      safeSend(ws, { type: 'initialized' });
-      return;
-    }
-    if (msg.type === 'connect') {
-      const prevLevel = session.currentLevel;
-      const { started, reason, result } = session.connect(msg.level, msg.password);
-      if (!started) { safeSend(ws, { type: 'throttled', reason }); return; }
-      const r = await result;
-      if (!r.ok) { safeSend(ws, { type: 'connectFailed', reason: r.reason }); return; }
-      safeSend(ws, { type: 'connected', level: msg.level });
-      // If we advanced one level, the prior level is now finalized -> offer PDF.
-      if (prevLevel !== null && msg.level === prevLevel + 1) {
-        safeSend(ws, { type: 'levelComplete', level: prevLevel });
+      if (msg.type === 'init') {
+        session.setIdentity(msg.name, msg.email);
+        safeSend(ws, { type: 'initialized' });
+        return;
       }
-      return;
+      if (msg.type === 'connect') {
+        const prevLevel = session.currentLevel;
+        const { started, reason, result } = session.connect(msg.level, msg.password);
+        if (!started) { safeSend(ws, { type: 'throttled', reason }); return; }
+        const r = await result;
+        if (!r.ok) { safeSend(ws, { type: 'connectFailed', reason: r.reason }); return; }
+        safeSend(ws, { type: 'connected', level: msg.level });
+        if (prevLevel !== null && msg.level === prevLevel + 1) {
+          safeSend(ws, { type: 'levelComplete', level: prevLevel });
+        }
+        return;
+      }
+      if (msg.type === 'input') { session.input(msg.data); return; }
+      if (msg.type === 'resize') { session.resize(msg.cols, msg.rows); return; }
+    } catch (err) {
+      safeSend(ws, { type: 'error', message: 'internal error' });
     }
-    if (msg.type === 'input') { session.input(msg.data); return; }
-    if (msg.type === 'resize') { session.resize(msg.cols, msg.rows); return; }
   });
 
   ws.on('close', () => sm.removeSession(session.id));
