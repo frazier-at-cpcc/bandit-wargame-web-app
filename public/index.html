@@ -14,12 +14,15 @@
     <h2>Start a session</h2>
     <label>Name <input id="name" type="text" autocomplete="name" /></label>
     <label>Email <input id="email" type="email" autocomplete="email" /></label>
+    <label>Start at <select id="startLevel"></select></label>
     <button id="startBtn">Start</button>
-    <p class="hint">Your name and email appear on each level's PDF.</p>
+    <p class="hint">Your name and email appear on each level's PDF. Pick the level you
+      have the password for — you can switch labs anytime.</p>
   </section>
 
   <main id="workspace" hidden>
     <aside id="panel" class="card">
+      <label id="labSelectLabel">Lab <select id="labSelect"></select></label>
       <h2 id="levelTitle">Level 0</h2>
       <p id="levelTask"></p>
       <ul id="levelHints"></ul>

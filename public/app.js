@@ -5,7 +5,8 @@ let currentLevel = 0;
 let hasConnected = false;
 let identity = { name: '', email: '' };
 
-const FINAL_LEVEL = 25; // connecting here finalizes the level-24 PDF (course complete)
+const FINAL_LEVEL = 25;    // connecting here finalizes the level-24 PDF (course complete)
+const MAX_TASK_LEVEL = 24; // highest level shown in the picker (level 25 is auto-reached)
 
 const $ = (id) => document.getElementById(id);
 
@@ -33,6 +34,18 @@ async function loadLevels() {
   Object.assign(LEVELS, await res.json());
 }
 
+// Fill a <select> with one option per task level (0..MAX_TASK_LEVEL), titled.
+function populateLevelOptions(sel) {
+  sel.innerHTML = '';
+  for (let n = 0; n <= MAX_TASK_LEVEL; n++) {
+    const meta = LEVELS[n] || { title: '' };
+    const opt = document.createElement('option');
+    opt.value = String(n);
+    opt.textContent = `Level ${n}${meta.title ? ' — ' + meta.title : ''}`;
+    sel.appendChild(opt);
+  }
+}
+
 function updateNextBtn() {
   // Show "Next level" only after the student has connected at least once and
   // there is a further level to advance to (cap at the final connect level).
@@ -53,6 +66,8 @@ function renderLevelPanel(level) {
     $('levelHints').innerHTML = meta.hints.map((h) => `<li>${escapeHtml(h)}</li>`).join('');
     $('pwLabel').firstChild.textContent = `bandit${level} password `;
   }
+  // Keep the workspace "Lab" picker in sync (the final step 25 has no option).
+  if (level <= MAX_TASK_LEVEL) $('labSelect').value = String(level);
   $('password').value = '';
   $('pdfArea').hidden = true;
   updateNextBtn();
@@ -115,7 +130,7 @@ function start() {
   if (!identity.name || !identity.email) { alert('Enter name and email.'); return; }
   localStorage.setItem('bandit.name', identity.name);
   localStorage.setItem('bandit.email', identity.email);
-  currentLevel = Number(localStorage.getItem('bandit.level') || '0');
+  currentLevel = Number($('startLevel').value || '0');
   $('start').hidden = true;
   $('workspace').hidden = false;
   renderLevelPanel(currentLevel);
@@ -136,10 +151,22 @@ function onConnectSubmit(e) {
 
 window.addEventListener('DOMContentLoaded', async () => {
   await loadLevels();
+  populateLevelOptions($('startLevel'));
+  populateLevelOptions($('labSelect'));
+  // Preselect the start picker to the last level used on this device (clamped).
+  const lastLevel = Number(localStorage.getItem('bandit.level') || '0');
+  $('startLevel').value = String(Math.min(Math.max(lastLevel, 0), MAX_TASK_LEVEL));
   $('name').value = localStorage.getItem('bandit.name') || '';
   $('email').value = localStorage.getItem('bandit.email') || '';
   $('startBtn').addEventListener('click', start);
   $('connectForm').addEventListener('submit', onConnectSubmit);
+  // Jump to any lab mid-session: re-render its panel; the live terminal stays
+  // until the student actually connects to the selected level.
+  $('labSelect').addEventListener('change', () => {
+    currentLevel = Number($('labSelect').value);
+    renderLevelPanel(currentLevel);
+    setStatus(`Selected Level ${currentLevel}. Enter the bandit${currentLevel} password to connect.`);
+  });
   $('nextLevelBtn').addEventListener('click', () => {
     if (currentLevel < FINAL_LEVEL) {
       currentLevel = currentLevel + 1;

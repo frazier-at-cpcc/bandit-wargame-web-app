@@ -5,7 +5,10 @@ header h1 { margin: 0; font-size: 18px; }
 .card { background: #161a23; border: 1px solid #2a2f3a; border-radius: 8px; padding: 16px; }
 #start { max-width: 420px; margin: 40px auto; }
 #start label, #connectForm label { display: block; margin: 10px 0; font-size: 14px; }
-#start input, #connectForm input { width: 100%; padding: 8px; margin-top: 4px;
+#start input, #connectForm input, #start select { width: 100%; padding: 8px; margin-top: 4px;
+  background: #0f1117; border: 1px solid #2a2f3a; color: #e6e6e6; border-radius: 6px; }
+#labSelectLabel { display: block; font-size: 13px; color: #8b93a3; margin-bottom: 8px; }
+#labSelect { width: 100%; margin-top: 4px; padding: 6px;
   background: #0f1117; border: 1px solid #2a2f3a; color: #e6e6e6; border-radius: 6px; }
 button { padding: 8px 14px; background: #2d6cdf; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
 button:hover { background: #3a7af0; }
