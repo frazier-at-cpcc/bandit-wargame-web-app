@@ -1,0 +1,15 @@
+[Unit]
+Description=Bandit Wargame Web App (Docker container)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=300
+ExecStart=/usr/local/bin/bandit-run.sh
+ExecStop=/usr/bin/docker stop bandit
+
+[Install]
+WantedBy=multi-user.target

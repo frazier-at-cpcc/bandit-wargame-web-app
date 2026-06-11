@@ -1,0 +1,8 @@
+network:
+  version: 2
+  ethernets:
+    alleth:
+      match:
+        name: "e*"
+      dhcp4: true
+      dhcp6: false
