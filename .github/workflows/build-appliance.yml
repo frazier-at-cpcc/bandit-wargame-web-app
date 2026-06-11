@@ -1,0 +1,67 @@
+name: Build appliance image
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL || true
+          df -h /
+          AVAIL=$(df --output=avail / | tail -1)
+          echo "Available KB on /: $AVAIL"
+          [ "$AVAIL" -gt 20000000 ] || { echo "Insufficient disk space (<20GB free)"; exit 1; }
+
+      - name: Prepare libguestfs prerequisites
+        run: |
+          # libguestfs must be able to read the host kernel, and wants KVM.
+          sudo chmod 0644 /boot/vmlinuz-* || true
+          sudo chmod 0666 /dev/kvm || true
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libguestfs-tools qemu-utils jq
+
+      - name: Build and save the app Docker image
+        run: |
+          docker build -t bandit-web-app:latest .
+          mkdir -p build
+          docker save bandit-web-app:latest | gzip > build/image.tar.gz
+          ls -lh build/image.tar.gz
+
+      - name: Build OVA + qcow2
+        env:
+          LIBGUESTFS_BACKEND: direct
+          WORKDIR: ${{ github.workspace }}/build
+          OUT_DIR: ${{ github.workspace }}/build/out
+          IMAGE_TAR: ${{ github.workspace }}/build/image.tar.gz
+        run: |
+          chmod +x appliance/build-ova.sh
+          sudo -E appliance/build-ova.sh
+          sudo chown -R "$USER" build/out
+
+      - name: Upload appliance artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-appliance
+          path: |
+            build/out/*.ova
+            build/out/*.qcow2
+            build/out/SHA256SUMS
+            build/out/IMPORT.md
+          retention-days: 14
+          if-no-files-found: error
