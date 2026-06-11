@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: bandit-wargame-web-app
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: HEADER_TEXT
+        value: "Introduction to Linux — Bandit"

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Introduction to Linux — Bandit</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header><h1>Introduction to Linux — Bandit</h1></header>
+
+  <section id="start" class="card">
+    <h2>Start a session</h2>
+    <label>Name <input id="name" type="text" autocomplete="name" /></label>
+    <label>Email <input id="email" type="email" autocomplete="email" /></label>
+    <button id="startBtn">Start</button>
+    <p class="hint">Your name and email appear on each level's PDF.</p>
+  </section>
+
+  <main id="workspace" hidden>
+    <aside id="panel" class="card">
+      <h2 id="levelTitle">Level 0</h2>
+      <p id="levelTask"></p>
+      <ul id="levelHints"></ul>
+      <form id="connectForm">
+        <label id="pwLabel">bandit0 password
+          <input id="password" type="password" autocomplete="off" />
+        </label>
+        <button type="submit" id="connectBtn">Connect</button>
+      </form>
+      <p id="status" class="status"></p>
+      <button id="nextLevelBtn" type="button" hidden>Next level →</button>
+      <div id="pdfArea" hidden>
+        <p>Level complete! Download your command log:</p>
+        <a id="pdfLink" href="#" target="_blank" rel="noopener">Download PDF</a>
+      </div>
+    </aside>
+    <div id="terminal"></div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="terminal.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
