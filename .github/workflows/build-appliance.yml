@@ -27,9 +27,9 @@ jobs:
           echo "Available KB on /: $AVAIL"
           [ "$AVAIL" -gt 20000000 ] || { echo "Insufficient disk space (<20GB free)"; exit 1; }
 
-      - name: Prepare libguestfs prerequisites
+      - name: Prepare build tooling
         run: |
-          # libguestfs must be able to read the host kernel, and wants KVM.
+          # libguestfs (virt-resize) needs to read the host kernel and wants KVM.
           sudo chmod 0644 /boot/vmlinuz-* || true
           sudo chmod 0666 /dev/kvm || true
           sudo apt-get update

@@ -32,40 +32,81 @@ qemu-img create -f qcow2 expanded.qcow2 "$DISK_SIZE"
 virt-resize --expand /dev/sda1 base.img expanded.qcow2
 rm -f base.img   # no longer needed; reclaim runner disk
 
-echo "==> Staging appliance assets"
-STAGE="$WORKDIR/stage"
-rm -rf "$STAGE"
-mkdir -p "$STAGE"
-cp "$IMAGE_TAR" "$STAGE/image.tar.gz"
-cp "$APPLIANCE_DIR/app.env" "$STAGE/app.env"
-cp "$APPLIANCE_DIR/bandit-run.sh" "$STAGE/bandit-run.sh"
-cp "$APPLIANCE_DIR/bandit-app.service" "$STAGE/bandit-app.service"
-cp "$APPLIANCE_DIR/netplan-99-dhcp.yaml" "$STAGE/99-dhcp.yaml"
+echo "==> Provisioning via qemu-nbd + chroot (uses the runner's network, no passt)"
+# virt-customize --network relies on passt, which is incompatible with libguestfs
+# on Ubuntu 24.04 hosted runners ("passt exited with status 1"). Instead, attach
+# the disk with qemu-nbd, mount it, and run apt inside a chroot that shares the
+# runner's working network namespace — no guest networking helper involved.
+MNT="$WORKDIR/mnt"
+NBD=/dev/nbd0
+mkdir -p "$MNT"
 
-echo "==> Customizing image with virt-customize"
-# --network enables slirp networking inside the appliance so apt can fetch packages.
-virt-customize -a expanded.qcow2 --network \
-  --hostname bandit-appliance \
-  --install docker.io \
-  --run-command 'systemctl enable docker' \
-  --mkdir /opt/bandit \
-  --mkdir /etc/bandit \
-  --copy-in "$STAGE/image.tar.gz:/opt/bandit" \
-  --copy-in "$STAGE/app.env:/etc/bandit" \
-  --copy-in "$STAGE/bandit-run.sh:/usr/local/bin" \
-  --run-command 'chmod 0755 /usr/local/bin/bandit-run.sh' \
-  --copy-in "$STAGE/bandit-app.service:/etc/systemd/system" \
-  --run-command 'systemctl enable bandit-app.service' \
-  --copy-in "$STAGE/99-dhcp.yaml:/etc/netplan" \
-  --run-command 'chmod 0600 /etc/netplan/99-dhcp.yaml' \
-  --write '/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg:network: {config: disabled}' \
-  --run-command 'useradd -m -s /bin/bash -G sudo,docker bandit || true' \
-  --run-command "echo 'bandit:bandit' | chpasswd" \
-  --write '/etc/ssh/sshd_config.d/00-bandit.conf:PasswordAuthentication yes' \
-  --write '/etc/cloud/cloud.cfg.d/99-bandit-pwauth.cfg:ssh_pwauth: true' \
-  --run-command 'chage -d 0 bandit' \
-  --run-command 'systemctl enable ssh' \
-  --run-command 'truncate -s 0 /etc/machine-id'
+modprobe nbd max_part=8
+qemu-nbd --connect="$NBD" expanded.qcow2
+
+# Find the root partition. virt-resize can renumber GPT partitions, and 24.04
+# cloud images carry a small separate ext4 /boot, so detect by filesystem type AND
+# pick the LARGEST ext4 partition (the real root).
+ROOT=""
+for _ in $(seq 1 15); do
+  ROOT="$(lsblk -brno NAME,FSTYPE,SIZE "$NBD" \
+    | awk '$2=="ext4"{print $3, "/dev/"$1}' | sort -nr | head -1 | awk '{print $2}')"
+  [ -n "$ROOT" ] && break
+  sleep 1
+done
+[ -n "$ROOT" ] || { echo "ERROR: no ext4 root partition on $NBD" >&2; lsblk "$NBD" >&2; exit 1; }
+echo "    root partition: $ROOT"
+mount "$ROOT" "$MNT"
+# Sanity-check we mounted the real root, not /boot or similar.
+[ -x "$MNT/bin/bash" ] || { echo "ERROR: $ROOT is not the root fs" >&2; ls -la "$MNT" >&2; exit 1; }
+
+# Bind mounts for a working chroot.
+for d in dev dev/pts proc sys run; do mount --bind "/$d" "$MNT/$d"; done
+# Working DNS for apt. The guest's /etc/resolv.conf is a systemd-resolved symlink;
+# replace it with a real file (the chroot shares the runner's network namespace, so
+# public resolvers are reachable). The symlink is restored after provisioning.
+rm -f "$MNT/etc/resolv.conf"
+printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > "$MNT/etc/resolv.conf"
+# Block package post-install from starting services inside the chroot.
+printf '#!/bin/sh\nexit 101\n' > "$MNT/usr/sbin/policy-rc.d"
+chmod 0755 "$MNT/usr/sbin/policy-rc.d"
+
+# Place appliance files directly onto the mounted filesystem.
+install -d -m 0755 "$MNT/opt/bandit" "$MNT/etc/bandit"
+cp "$IMAGE_TAR" "$MNT/opt/bandit/image.tar.gz"
+cp "$APPLIANCE_DIR/app.env" "$MNT/etc/bandit/app.env"
+install -m 0755 "$APPLIANCE_DIR/bandit-run.sh" "$MNT/usr/local/bin/bandit-run.sh"
+cp "$APPLIANCE_DIR/bandit-app.service" "$MNT/etc/systemd/system/bandit-app.service"
+install -m 0600 "$APPLIANCE_DIR/netplan-99-dhcp.yaml" "$MNT/etc/netplan/99-dhcp.yaml"
+printf 'network: {config: disabled}\n' > "$MNT/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg"
+printf 'PasswordAuthentication yes\n' > "$MNT/etc/ssh/sshd_config.d/00-bandit.conf"
+printf 'ssh_pwauth: true\n' > "$MNT/etc/cloud/cloud.cfg.d/99-bandit-pwauth.cfg"
+echo bandit-appliance > "$MNT/etc/hostname"
+
+# Guest-context provisioning: install Docker, create the user, enable services.
+chroot "$MNT" /bin/bash -eux <<'CHROOT'
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends docker.io
+systemctl enable docker
+systemctl enable ssh
+systemctl enable bandit-app.service
+id bandit >/dev/null 2>&1 || useradd -m -s /bin/bash -G sudo,docker bandit
+echo 'bandit:bandit' | chpasswd
+chage -d 0 bandit
+truncate -s 0 /etc/machine-id
+apt-get clean
+CHROOT
+
+# Restore the cloud image's managed resolv.conf and drop the install guard.
+rm -f "$MNT/usr/sbin/policy-rc.d"
+ln -sf ../run/systemd/resolve/stub-resolv.conf "$MNT/etc/resolv.conf" 2>/dev/null || true
+
+# Unwind mounts and detach the disk.
+sync
+for d in run sys proc dev/pts dev; do umount -l "$MNT/$d" 2>/dev/null || true; done
+umount "$MNT" 2>/dev/null || umount -l "$MNT" 2>/dev/null || true
+qemu-nbd --disconnect "$NBD"
 
 echo "==> Producing qcow2 (compressed)"
 qemu-img convert -O qcow2 -c expanded.qcow2 "$OUT_DIR/$VM_NAME.qcow2"
