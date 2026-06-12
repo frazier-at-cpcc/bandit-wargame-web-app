@@ -10,6 +10,11 @@ Verify downloads against `SHA256SUMS`:
 sha256sum -c SHA256SUMS
 ```
 
+> **Boot firmware: UEFI is required.** The Ubuntu cloud image this is built on boots via UEFI.
+> Importing under Proxmox's default **SeaBIOS (legacy)** drops to a `grub rescue>` prompt. The
+> commands below set `--bios ovmf` and add an EFI disk — do not omit them. (Verified on
+> Proxmox VE 9.1 with the sibling RH104 appliance, which uses the identical build pipeline.)
+
 ## Option A — qcow2 (recommended)
 
 Copy the qcow2 to a Proxmox node, then:
@@ -19,12 +24,13 @@ VMID=9000
 STORAGE=local-lvm
 
 qm create $VMID --name bandit-wargame --memory 2048 --cores 2 \
-  --net0 virtio,bridge=vmbr0 --scsihw virtio-scsi-single --ostype l26
+  --net0 virtio,bridge=vmbr0 --scsihw virtio-scsi-single --ostype l26 --bios ovmf
 
 qm importdisk $VMID bandit-wargame-appliance.qcow2 $STORAGE
 # importdisk attaches it as an unused disk; attach and make it bootable:
 qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0
 qm set $VMID --boot order=scsi0
+qm set $VMID --efidisk0 $STORAGE:0,efitype=4m,pre-enrolled-keys=0   # UEFI boot
 qm set $VMID --serial0 socket --vga serial0   # optional: serial console
 qm start $VMID
 ```
@@ -38,6 +44,8 @@ Adjust `vmbr0` to a bridge that has outbound internet (the app reaches
    follow the wizard. Set the NIC bridge to one with internet egress.
 3. On older Proxmox: `qm importovf <vmid> bandit-wargame-appliance.ova <storage>`
    (extract the OVA first if needed: `tar xf bandit-wargame-appliance.ova`).
+4. **After import, set the VM firmware to UEFI** (Hardware → BIOS → OVMF (UEFI), add an
+   EFI Disk) before first boot — see the UEFI note above.
 
 ## First boot
 
